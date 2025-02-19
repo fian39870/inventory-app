@@ -9,7 +9,16 @@ import 'package:firebase_core/firebase_core.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "AIzaSyDCC0klaOc14-9kF3oMQmeTzWjeDQIlYhw",
+        authDomain: "inventory-55b29.firebaseapp.com",
+        projectId: "inventory-55b29",
+        storageBucket: "inventory-55b29.firebasestorage.app",
+        messagingSenderId: "660960989118",
+        appId: "1:660960989118:web:af922cecf6706dab40b3ef",
+      ),
+    );
     runApp(const MyApp());
   } catch (e) {
     print('Firebase initialization error: $e');

@@ -50,50 +50,55 @@ class _PeminjamanPageState extends State<PeminjamanPage> {
       final QuerySnapshot usersSnapshot =
           await _firestore.collection('users').get();
       print('Loading users: ${usersSnapshot.docs.length} documents found');
-
       List<User> users =
           usersSnapshot.docs.map((doc) => User.fromFirestore(doc)).toList();
-      print(users);
+
       // Load inventory
       final QuerySnapshot inventorySnapshot =
           await _firestore.collection('inventory').get();
-      print(inventorySnapshot);
       print(
           'Loading inventory: ${inventorySnapshot.docs.length} documents found');
-
       List<Inventory> inventory = inventorySnapshot.docs
           .map((doc) => Inventory.fromFirestore(doc))
           .toList();
-      print(inventory);
-      // Load peminjaman with related data
+
+      // Load peminjaman
       final QuerySnapshot peminjamanSnapshot =
           await _firestore.collection('peminjaman').get();
+
+      // Debug: Print raw peminjaman data
+      print('Raw peminjaman data:');
+      for (var doc in peminjamanSnapshot.docs) {
+        print('Document ${doc.id}: ${doc.data()}');
+      }
 
       List<Peminjaman> peminjaman = await Future.wait(
         peminjamanSnapshot.docs.map((doc) async {
           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-          // Safe conversion of dates with null checking
-          DateTime? borrowDate;
-          DateTime? returnDate;
+          // Debug: Print individual document data
+          print('Processing document ${doc.id}:');
+          print('borrowDate: ${data['borrowDate']}');
+          print('returnDate: ${data['returnDate']}');
 
-          // Handle borrowDate
-          if (data['borrowDate'] is Timestamp) {
-            borrowDate = (data['borrowDate'] as Timestamp).toDate();
-          } else if (data['borrowDate'] is String) {
-            borrowDate = DateTime.parse(data['borrowDate']);
-          } else {
-            borrowDate = DateTime.now(); // Default value
+          // Handle dates with null checking
+          DateTime borrowDate = DateTime.now();
+          DateTime returnDate = DateTime.now().add(const Duration(days: 7));
+
+          if (data['borrowDate'] != null) {
+            if (data['borrowDate'] is Timestamp) {
+              borrowDate = (data['borrowDate'] as Timestamp).toDate();
+            } else if (data['borrowDate'] is String) {
+              borrowDate = DateTime.parse(data['borrowDate']);
+            }
           }
 
-          // Handle returnDate
-          if (data['returnDate'] is Timestamp) {
-            returnDate = (data['returnDate'] as Timestamp).toDate();
-          } else if (data['returnDate'] is String) {
-            returnDate = DateTime.parse(data['returnDate']);
-          } else {
-            returnDate =
-                DateTime.now().add(const Duration(days: 7)); // Default value
+          if (data['returnDate'] != null) {
+            if (data['returnDate'] is Timestamp) {
+              returnDate = (data['returnDate'] as Timestamp).toDate();
+            } else if (data['returnDate'] is String) {
+              returnDate = DateTime.parse(data['returnDate']);
+            }
           }
 
           // Get user data
@@ -125,7 +130,7 @@ class _PeminjamanPageState extends State<PeminjamanPage> {
             borrowDate: borrowDate,
             returnDate: returnDate,
             status: data['status'] ?? 'unknown',
-            notes: data['notes'],
+            notes: data['notes'] ?? '',
             user: user,
             inventory: inventory,
           );
@@ -140,8 +145,10 @@ class _PeminjamanPageState extends State<PeminjamanPage> {
         _isLoading = false;
       });
 
-      print(
-          'Successfully loaded: ${users.length} users, ${inventory.length} inventory items, ${peminjaman.length} peminjaman records');
+      print('Successfully loaded data:');
+      print('Users: ${users.length}');
+      print('Inventory: ${inventory.length}');
+      print('Peminjaman: ${peminjaman.length}');
     } catch (e, stackTrace) {
       print('Error loading data: $e');
       print('Stack trace: $stackTrace');
@@ -212,142 +219,200 @@ class _PeminjamanPageState extends State<PeminjamanPage> {
 
   Future<void> _showAddPeminjamanModal() async {
     _resetForm();
+    String searchUser = '';
+    String searchInventory = '';
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Tambah Peminjaman Baru'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // User dropdown
-                  DropdownButtonFormField<String>(
-                    value: _selectedUserId,
-                    decoration: const InputDecoration(labelText: 'Peminjam'),
-                    items: userList.map((User user) {
-                      return DropdownMenuItem(
-                        value: user.id,
-                        child: Text(user.fullName),
-                      );
-                    }).toList(),
-                    onChanged: (String? value) {
-                      setState(() {
-                        _selectedUserId = value;
-                      });
-                    },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Pilih peminjam';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // Filter lists based on search
+            final filteredUsers = userList
+                .where((user) => user.fullName
+                    .toLowerCase()
+                    .contains(searchUser.toLowerCase()))
+                .toList();
 
-                  // Inventory dropdown
-                  DropdownButtonFormField<String>(
-                    value: _selectedInventoryId,
-                    decoration: const InputDecoration(labelText: 'Barang'),
-                    items: inventoryList.map((Inventory item) {
-                      return DropdownMenuItem(
-                        value: item.id,
-                        child: Text(item.name),
-                      );
-                    }).toList(),
-                    onChanged: (String? value) {
-                      setState(() {
-                        _selectedInventoryId = value;
-                      });
-                    },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Pilih barang';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
+            final filteredInventory = inventoryList
+                .where((item) => item.name
+                    .toLowerCase()
+                    .contains(searchInventory.toLowerCase()))
+                .toList();
 
-                  // Borrow date picker
-                  ListTile(
-                    title: const Text('Tanggal Pinjam'),
-                    subtitle:
-                        Text(DateFormat('dd/MM/yyyy').format(_borrowDate)),
-                    trailing: const Icon(Icons.calendar_today),
-                    onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: _borrowDate,
-                        firstDate:
-                            DateTime.now().subtract(const Duration(days: 365)),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _borrowDate = picked;
-                        });
-                      }
-                    },
-                  ),
+            return AlertDialog(
+              title: const Text('Tambah Peminjaman Baru'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // User Search and Dropdown
+                      TextField(
+                        decoration: const InputDecoration(
+                          labelText: 'Cari Peminjam',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            searchUser = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: _selectedUserId,
+                        decoration: const InputDecoration(
+                          labelText: 'Peminjam',
+                          border: OutlineInputBorder(),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                        items: filteredUsers.map((User user) {
+                          return DropdownMenuItem(
+                            value: user.id,
+                            child: Text(user.fullName),
+                          );
+                        }).toList(),
+                        onChanged: (String? value) {
+                          setState(() {
+                            _selectedUserId = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Pilih peminjam';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
 
-                  // Return date picker
-                  ListTile(
-                    title: const Text('Tanggal Kembali'),
-                    subtitle:
-                        Text(DateFormat('dd/MM/yyyy').format(_returnDate)),
-                    trailing: const Icon(Icons.calendar_today),
-                    onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: _returnDate,
-                        firstDate: _borrowDate,
-                        lastDate: _borrowDate.add(const Duration(days: 365)),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _returnDate = picked;
-                        });
-                      }
-                    },
-                  ),
+                      // Inventory Search and Dropdown
+                      TextField(
+                        decoration: const InputDecoration(
+                          labelText: 'Cari Barang',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            searchInventory = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: _selectedInventoryId,
+                        decoration: const InputDecoration(
+                          labelText: 'Barang',
+                          border: OutlineInputBorder(),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                        items: filteredInventory.map((Inventory item) {
+                          return DropdownMenuItem(
+                            value: item.id,
+                            child: Text(item.name),
+                          );
+                        }).toList(),
+                        onChanged: (String? value) {
+                          setState(() {
+                            _selectedInventoryId = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Pilih barang';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
 
-                  // Notes text field
-                  TextFormField(
-                    controller: _notesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Catatan',
-                      hintText: 'Tambahkan catatan jika diperlukan',
-                    ),
-                    maxLines: 3,
+                      // Borrow date picker
+                      ListTile(
+                        title: const Text('Tanggal Pinjam'),
+                        subtitle:
+                            Text(DateFormat('dd/MM/yyyy').format(_borrowDate)),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: () async {
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: _borrowDate,
+                            firstDate: DateTime.now()
+                                .subtract(const Duration(days: 365)),
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _borrowDate = picked;
+                            });
+                          }
+                        },
+                      ),
+
+                      // Return date picker
+                      ListTile(
+                        title: const Text('Tanggal Kembali'),
+                        subtitle:
+                            Text(DateFormat('dd/MM/yyyy').format(_returnDate)),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: () async {
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: _returnDate,
+                            firstDate: _borrowDate,
+                            lastDate:
+                                _borrowDate.add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _returnDate = picked;
+                            });
+                          }
+                        },
+                      ),
+
+                      // Notes text field
+                      TextFormField(
+                        controller: _notesController,
+                        decoration: const InputDecoration(
+                          labelText: 'Catatan',
+                          hintText: 'Tambahkan catatan jika diperlukan',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 3,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                _submitPeminjaman();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF14213D),
-              ),
-              child: const Text(
-                'Simpan',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    _submitPeminjaman();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF14213D),
+                  ),
+                  child: const Text(
+                    'Simpan',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     );

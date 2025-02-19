@@ -1,56 +1,44 @@
 import 'user_model.dart';
 import 'inventory_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Peminjaman {
-  final String? id;
+  final String id;
   final String userId;
   final String inventoryId;
   final DateTime borrowDate;
   final DateTime returnDate;
-  final String status; // dipinjam, dikembalikan
-  final String? notes;
-  final User? user; // Relasi ke model User
-  final Inventory? inventory; // Relasi ke model Inventory
+  final String status;
+  final String notes;
+  final User? user;
+  final Inventory? inventory;
 
   Peminjaman({
-    this.id,
+    required this.id,
     required this.userId,
     required this.inventoryId,
     required this.borrowDate,
     required this.returnDate,
     required this.status,
-    this.notes,
+    required this.notes,
     this.user,
     this.inventory,
   });
 
-  factory Peminjaman.fromJson(Map<String, dynamic> json) {
+  // Factory constructor jika diperlukan
+  factory Peminjaman.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Peminjaman(
-      id: json['id'],
-      userId: json['userId'],
-      inventoryId: json['inventoryId'],
-      borrowDate: DateTime.parse(json['borrowDate']),
-      returnDate: DateTime.parse(json['returnDate']),
-      status: json['status'],
-      notes: json['notes'],
-      user: json['user'] != null ? User.fromJson(json['user']) : null,
-      inventory: json['inventory'] != null
-          ? Inventory.fromJson(json['inventory'])
-          : null,
+      id: doc.id,
+      userId: data['userId'] ?? '',
+      inventoryId: data['inventoryId'] ?? '',
+      borrowDate:
+          (data['borrowDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      returnDate: (data['returnDate'] as Timestamp?)?.toDate() ??
+          DateTime.now().add(const Duration(days: 7)),
+      status: data['status'] ?? 'unknown',
+      notes: data['notes'] ?? '',
+      // user dan inventory akan diset terpisah
     );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'userId': userId,
-      'inventoryId': inventoryId,
-      'borrowDate': borrowDate.toIso8601String(),
-      'returnDate': returnDate.toIso8601String(),
-      'status': status,
-      'notes': notes,
-      'user': user?.toJson(),
-      'inventory': inventory?.toJson(),
-    };
   }
 }
